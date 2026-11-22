@@ -45,6 +45,13 @@ of the ABACUS export. A symmetry count in `running_*.log` is insufficient
 to reconstruct the operations. All input files must belong to the same geometry.
 No k-point block is written.
 
+`symrot_R.txt` exports the cell's full point group, while the retired
+`stru_out.txt` kept only the operations that map the sampled k-mesh onto
+itself. The program applies the same filter, using the mesh it reads from
+`KPT.info`; operations that a non-cubic mesh breaks are dropped, because
+LibRPA reconstructs k-stars from this set. When `KPT.info` cannot be read the
+filter is skipped and every exported operation is written.
+
 For `nspin 4` runs the program also writes the `spin_symmetry` block, which
 carries the SU(2) representative of every operation. The convention is
 `U sigma_i U^dagger = sum_j W_ij sigma_j` with `W = R_proper^T`, matching
