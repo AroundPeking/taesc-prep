@@ -58,3 +58,44 @@ class SymrotExportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SpatialOnlyExportTests(unittest.TestCase):
+    """nspin=4 exports carry no orbital rotation rows."""
+
+    TEXT = """Number of irreducible sector: 1
+Lmax of AOs: 1
+Lmax of ABFs: 2
+Format:
+The index of the symmetry operation
+Spatial-only export: no orbital rotation matrices are written.
+
+0
+1.000000 0.000000 0.000000
+0.000000 1.000000 0.000000
+0.000000 0.000000 1.000000
+(0.000000 0.000000 0.000000)
+1
+-1.000000 0.000000 0.000000
+0.000000 -1.000000 0.000000
+0.000000 0.000000 -1.000000
+(0.500000 0.500000 0.500000)
+Antiunitary operations: 1
+0
+0.000000 -1.000000 0.000000
+1.000000 0.000000 0.000000
+0.000000 0.000000 1.000000
+(0.500000 0.500000 0.000000)
+"""
+
+    def test_two_unitary_and_one_antiunitary(self):
+        unitary, antiunitary = read_symrot(self.TEXT)
+        self.assertEqual([r for r, _ in unitary],
+                         [[1, 0, 0, 0, 1, 0, 0, 0, 1],
+                          [-1, 0, 0, 0, -1, 0, 0, 0, -1]])
+        self.assertEqual(len(antiunitary), 1)
+        self.assertEqual(antiunitary[0][0], [0, -1, 0, 1, 0, 0, 0, 0, 1])
+
+    def test_translation_survives(self):
+        _, antiunitary = read_symrot(self.TEXT)
+        self.assertEqual(antiunitary[0][1], [0.5, 0.5, 0.0])

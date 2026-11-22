@@ -374,8 +374,10 @@ def read_symrot(text):
     start = next((i for i, line in enumerate(lines) if line == "0"), None)
     if start is None:
         raise ValueError("No symmetry operations in the spatial symmetry export")
-    # Each angular momentum contributes 2*l+1 orbital-matrix rows.
-    orbital_rows = (max(lmax) + 1)**2
+    # Each angular momentum contributes 2*l+1 orbital-matrix rows. A
+    # spatial-only export (nspin=4, where the collinear orbital rotations do
+    # not exist) omits them and says so in the header.
+    orbital_rows = 0 if "Spatial-only export" in text else (max(lmax) + 1)**2
     operations = []
     pos = start
     while pos < len(lines):
