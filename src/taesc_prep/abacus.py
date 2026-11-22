@@ -49,6 +49,17 @@ class AbacusSource(Source):
         operations, antiunitary = ([], [])
         if symfile:
             operations, antiunitary = read_symrot(symfile.read_text())
+            # symrot_R.txt exports the cell's full point group, while
+            # stru_out.txt kept only the operations that map the sampled
+            # k-mesh onto itself. Apply that filter so LibRPA's k-star
+            # reconstruction sees a usable set.
+            mesh = self._sampled_mesh()
+            if mesh is not None:
+                operations = [operation for operation in operations
+                              if preserves_mesh(operation[0], mesh)]
+                antiunitary = [operation for operation in antiunitary
+                               if preserves_mesh(operation[0], mesh, (0.0, 0.0, 0.0),
+                                                 antiunitary=True)]
             structure["operations"] = operations
         settings = read_input_settings(self.directory)
         structure["nspin"] = int(settings.get("nspin", 1))
@@ -73,6 +84,19 @@ class AbacusSource(Source):
         if reader is read_log:
             structure["notes"] = ("geometry precision is limited by the running log; prefer STRU_FINAL when available.",)
         return structure
+
+    def _sampled_mesh(self):
+        """Mesh divisions from KPT.info, or None when it cannot be read.
+
+        The structure conversion runs first, so a missing or unreadable
+        KPT.info must not block it; the symmetry filter is simply skipped.
+        """
+        try:
+            settings = read_input_settings(self.directory)
+            outdir = self.directory / ("OUT." + settings.get("suffix", "ABACUS"))
+            return read_kpt_info((outdir / "KPT.info").read_text())["mesh"]
+        except (OSError, ValueError, KeyError):
+            return None
 
     def _extract_bz_sampling(self) -> dict:
         settings = read_input_settings(self.directory)
@@ -298,6 +322,44 @@ def read_log(text):
         xyz = numbers(" ".join(fields[1:]))
         positions.append(multiply_row(xyz, lattice) if direct else [scale*x for x in xyz])
     return {"lattice": lattice, "positions": positions, "types": types}
+
+
+def reciprocal_rotation(direct_rotation):
+    """Return the reciprocal-space matrix of a fractional row-vector rotation.
+
+    ABACUS records ``k' = k * kg`` for row-vector k, so ``kg`` is the inverse
+    transpose of the direct-space operation.
+    """
+    a, b, c, d, e, f, g, h, i = direct_rotation
+    det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+    if abs(det) != 1:
+        raise ValueError("Symmetry rotation must be unimodular")
+    return [det * (e * i - f * h), det * (f * g - d * i), det * (d * h - e * g),
+            det * (c * h - b * i), det * (a * i - c * g), det * (b * g - a * h),
+            det * (b * f - c * e), det * (c * d - a * f), det * (a * e - b * d)]
+
+
+def preserves_mesh(direct_rotation, mesh, offset=(0.0, 0.0, 0.0), antiunitary=False):
+    """Whether an operation maps a Monkhorst-Pack mesh onto itself.
+
+    ABACUS keeps only such operations in ``stru_out.txt`` because the others
+    cannot be used to reconstruct k-stars. ``antiunitary`` applies the
+    time-reversal sign that Theta*g carries.
+    """
+    reciprocal = reciprocal_rotation(direct_rotation)
+    sign = -1 if antiunitary else 1
+    for source in range(3):
+        for target in range(3):
+            if sign * reciprocal[3 * source + target] * mesh[target] % mesh[source] != 0:
+                return False
+    origin = [offset[index] / mesh[index] for index in range(3)]
+    for target in range(3):
+        mapped = sign * sum(origin[source] * reciprocal[3 * source + target]
+                            for source in range(3))
+        shift = (mapped - origin[target]) * mesh[target]
+        if abs(shift - round(shift)) > 1e-8:
+            return False
+    return True
 
 
 def read_symrot(text):
